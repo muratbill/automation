@@ -1,0 +1,102 @@
+heat_template_version: 2014-10-16
+description: >
+  NFMP SERVER STATION RHEL8.6 VERSION 22.0
+  Author Murat Bilal; murat.bilal@nokia.com
+parameters:
+  network:
+    type: string
+    description: Network for VM
+    default: corp-shared
+  image:
+    type: string
+    description: RHEL Image for VM
+    default: NSP_RHEL8_22_9
+  instance_name:
+    type: string
+  
+resources:
+  my_server:
+    type: OS::Nova::Server
+    properties:
+     name: { get_param: instance_name }
+     flavor: vCPU:12-RAM:54272[MB]-Disk:600[GB]
+     networks:
+     - network: { get_param: network }
+     image: { get_param: image }
+     user_data_format: RAW
+     user_data:
+       get_resource: cloud_disk_init
+  cloud_disk_init:
+    type: OS::Heat::CloudConfig
+    properties:
+     cloud_config:
+        
+           
+         
+        write_files:
+         - path: "/var/lib/cloud/scripts/per-once/direc.sh"
+           permissions: '0755'
+           owner: root:root
+           content: |
+             #!/bin/bash
+             fdisk /dev/vda << EOF
+             n
+             p
+             4
+
+
+
+             t 
+             4
+             8e
+             w
+             EOF
+             pvcreate /dev/vda4
+             vgcreate vg2 /dev/vda4
+             lvcreate -n nsp -L 70G vg2
+             lvcreate -n nebackup -L 20G vg2
+             lvcreate -n nmslog -L 15G vg2
+             lvcreate -n xmloutput -L 10G vg2
+             lvcreate -n os -L 40G vg2
+             lvcreate -n extra -L 50G vg2
+             mkfs.ext4 /dev/vg2/nsp
+             mkfs.ext4 /dev/vg2/nebackup
+             mkfs.ext4 /dev/vg2/nmslog
+             mkfs.ext4 /dev/vg2/xmloutput
+             mkfs.ext4 /dev/vg2/os
+             mkfs.ext4 /dev/vg2/extra
+             mkdir -p /opt/nsp
+             echo '/dev/mapper/vg2-nsp /opt/nsp ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             mkdir -p /opt/nsp/nfmp/nebackup
+             echo '/dev/mapper/vg2-nebackup /opt/nsp/nfmp/nebackup ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             mkdir -p /opt/nsp/nfmp/server/nms/log
+             echo '/dev/mapper/vg2-nmslog /opt/nsp/nfmp/server/nms/log ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             mkdir -p /opt/nsp/nfmp/server/xml_output
+             echo '/dev/mapper/vg2-xmloutput /opt/nsp/nfmp/server/xml_output ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             mkdir -p /opt/nsp/os
+             echo '/dev/mapper/vg2-os /opt/nsp/os ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             mkdir -p /extra
+             echo '/dev/mapper/vg2-extra /extra ext4  noatime 1 2' >> /etc/fstab
+             mount -a
+             cp /etc/hosts /tmp/hosts.bck
+             ipval=`ip a |grep ens3 |grep -o -P  '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' |head -1`
+             echo $ipval  `hostname` > /etc/hosts
+             cat /tmp/hosts.bck >> /etc/hosts
+             localectl set-locale POSIX
+             timedatectl set-timezone Europe/Istanbul
+             
+        hostname: nfmp1
+           
+     
+outputs:
+  instance_name:
+    description: The name of VM
+    value: { get_attr: [my_server, name] }
+  private_ip:
+    description: The private IP of VM
+    value: { get_attr: [ my_server, first_address ] }
